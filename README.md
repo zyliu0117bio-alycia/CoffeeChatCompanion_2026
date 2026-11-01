@@ -24,17 +24,34 @@ A personal web app for managing coffee chats — track, learn, and grow from eve
 
 ## 🚀 Quick Start
 
-No build step required! Just open `src/index.html` in your browser.
+**No build step required!** Just open `src/index.html` in your browser.
 
+### Option 1: Download & Open (Easiest)
+1. Click the green **"Code"** button above → **"Download ZIP"**
+2. Unzip the file
+3. Double-click `src/index.html`
+4. Start using!
+
+### Option 2: Clone with Git
 ```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/coffee-chat-companion.git
-
-# Open in browser (macOS)
-open coffee-chat-companion/src/index.html
-
-# Or simply double-click index.html
+git clone https://github.com/zyliu0117bio-alycia/CoffeeChatCompanion_2026.git
+open CoffeeChatCompanion_2026/src/index.html
 ```
+
+### Your First Contact
+1. Click **"+ Add Contact"** on the Dashboard
+2. Fill in their name, institution, and research field
+3. Go to their profile → **"Research Brief"** tab
+4. Click **"Copy Prompt"** and paste to ChatGPT/Claude to auto-generate background research
+5. Paste the JSON result back with **"Paste JSON"**
+6. Add questions in the **"Questions"** tab
+7. After your coffee chat, record notes in **"Talk Records"**
+
+### Data Storage
+- All data is saved in your browser's localStorage
+- **No account or server needed**
+- Use **"Export Data"** in the sidebar to backup
+- Use **"Import Data"** to restore on a new device
 
 ## 📁 Project Structure
 
@@ -100,7 +117,7 @@ Contributions are welcome! Feel free to:
 
 ```bash
 # 克隆仓库
-git clone https://github.com/YOUR_USERNAME/coffee-chat-companion.git
+git clone https://github.com/zyliu0117bio-alycia/CoffeeChatCompanion_2026.git
 
 # 在浏览器中打开（macOS）
 open coffee-chat-companion/src/index.html
