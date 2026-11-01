@@ -30,7 +30,7 @@ A personal web app for managing coffee chats — track, learn, and grow from eve
 1. Click the green **"Code"** button above → **"Download ZIP"**
 2. Unzip the file
 3. Double-click `src/index.html`
-4. Start using!
+4. Start using! Remember to export your data from time to time to save your edits!
 
 ### Option 2: Clone with Git
 ```bash
