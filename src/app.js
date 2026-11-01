@@ -2462,7 +2462,7 @@
   function importData(callback) {
     var input = document.createElement("input");
     input.type = "file";
-    input.accept = ".json,application/json";
+    input.accept = ".json,application/json,text/plain";
     input.onchange = function(e) {
       var file = e.target.files[0];
       if (!file) return;
