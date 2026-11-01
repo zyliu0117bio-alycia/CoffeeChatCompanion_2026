@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# WorkBuddy AI internal files
+.workbuddy-ai/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
