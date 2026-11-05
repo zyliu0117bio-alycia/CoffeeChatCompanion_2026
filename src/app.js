@@ -485,8 +485,16 @@
       app.innerHTML = renderContactList();
       attachContactListEvents();
     } else if (state.view === "contactDetail") {
-      app.innerHTML = renderContactDetail();
-      attachDetailEvents();
+      var html = renderContactDetail();
+      // renderContactDetail() may change state.view if contact not found
+      if (state.view === "contactDetail") {
+        app.innerHTML = html;
+        attachDetailEvents();
+      } else {
+        // View changed during render — re-render with new view
+        render();
+        return;
+      }
     } else if (state.view === "addContact") {
       renderAddContactModal();
     }
@@ -681,13 +689,8 @@
           settings.customCoffeeName = customName;
           settings.customCoffeeRecipe = null;
           saveSettings(settings);
-          // Update the card visually
-          var card = document.getElementById("customCoffeeCard");
-          if (card) {
-            var visual = card.querySelector(".coffee-card-visual");
-            visual.innerHTML = '<img src="' + ev.target.result + '" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius) var(--radius) 0 0;">';
-            document.getElementById("customCoffeeName").textContent = customName + " / 自定义";
-          }
+          // Re-render the entire page to reflect changes
+          render();
         };
         reader.readAsDataURL(file);
       });
@@ -792,19 +795,8 @@
       settings.customCoffeeImage = null;
       saveSettings(settings);
 
-      // Update card
-      var card = document.getElementById("customCoffeeCard");
-      if (card) {
-        var total = layers.reduce(function(s, l) { return s + l.pct; }, 0);
-        var layersHtml = layers.map(function(l) {
-          var h = Math.round((l.pct / total) * 100);
-          return '<div class="recipe-layer" style="height:' + h + '%;background:' + l.color + ';"><span class="recipe-label">' + l.label + ' ' + l.pct + '%</span></div>';
-        }).join('');
-        document.getElementById("customCoffeeVisual").innerHTML = '<div class="recipe-cup">' + layersHtml + '</div>';
-        document.getElementById("customCoffeeName").textContent = name + " / 自定义";
-      }
-
       document.body.removeChild(overlay);
+      render();
     });
 
     // Attach initial listeners
@@ -1069,6 +1061,7 @@
   function renderContactDetail() {
     var c = getContact(state.currentContactId);
     if (!c) {
+      // Contact not found — redirect to contact list via render()
       state.view = "contactList";
       return renderContactList();
     }
@@ -1329,6 +1322,7 @@
           if (fu) {
             fu.done = cb.checked;
             saveData(state.data);
+            state.activeTab = "followups";
             render();
           }
         }
@@ -1466,6 +1460,7 @@
         if (c && c.questions) {
           c.questions = c.questions.filter(function(q) { return q.id !== qId; });
           saveData(state.data);
+          state.activeTab = "questions";
           render();
         }
       });
@@ -1487,6 +1482,7 @@
         if (c && c.talkRecords) {
           c.talkRecords = c.talkRecords.filter(function(t) { return t.id !== tId; });
           saveData(state.data);
+          state.activeTab = "talks";
           render();
         }
       });
@@ -1508,6 +1504,7 @@
         if (c && c.followups) {
           c.followups = c.followups.filter(function(f) { return f.id !== fId; });
           saveData(state.data);
+          state.activeTab = "followups";
           render();
         }
       });
@@ -1743,6 +1740,7 @@
 
       c.research = research;
       saveData(state.data);
+      state.activeTab = "brief";
       render();
       alert("Research brief generated successfully!");
 
@@ -1987,6 +1985,7 @@
         c.research = research;
         saveData(state.data);
         document.body.removeChild(overlay);
+        state.activeTab = "brief";
         render();
         alert("Research brief imported successfully!");
       } catch (err) {
@@ -2130,6 +2129,7 @@
       c.research.keyPapers = papers;
       saveData(state.data);
       document.body.removeChild(overlay);
+      state.activeTab = "brief";
       render();
     });
   }
@@ -2166,6 +2166,7 @@
       q.tags = tagsRaw ? tagsRaw.split(",").map(function(t) { return t.trim(); }).filter(Boolean) : [];
       saveData(state.data);
       document.body.removeChild(overlay);
+      state.activeTab = "questions";
       render();
     });
   }
@@ -2233,6 +2234,7 @@
       t.insights = insightsQuill.root.innerHTML || null;
       saveData(state.data);
       document.body.removeChild(overlay);
+      state.activeTab = "talks";
       render();
     });
   }
@@ -2271,6 +2273,7 @@
       f.done = document.getElementById("efDone").value === "true";
       saveData(state.data);
       document.body.removeChild(overlay);
+      state.activeTab = "followups";
       render();
     });
   }
@@ -2371,6 +2374,7 @@
         });
         saveData(state.data);
         document.body.removeChild(overlay);
+        state.activeTab = "followups";
         render();
       }
     });
