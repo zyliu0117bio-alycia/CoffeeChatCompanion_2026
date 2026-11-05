@@ -13,6 +13,7 @@
   var API_ENDPOINT_STORAGE = "coffee_chat_api_endpoint";
   var API_MODEL_STORAGE = "coffee_chat_api_model";
   var CURRENT_VERSION = 10; // bump when seed data changes
+  var APP_BUILD = "v30"; // bump on every code change to defeat file:// caching
 
   // --- Coffee Icons (inline SVG, drawn as simple silhouettes) ---
   var COFFEE_ICONS = {
@@ -362,35 +363,68 @@
       } catch (e) {}
     }
     // First load: seed with initial data
+    // Check if this looks like a fresh localStorage on a different file:// path
+    // (user may have bookmarks pointing to a different path with existing data)
     if (typeof SEED_DATA !== "undefined") {
       saveData(SEED_DATA);
       localStorage.setItem(STORAGE_VERSION_KEY, String(CURRENT_VERSION));
+      // Mark that this was a fresh seed, not user data
+      localStorage.setItem("coffee_chat_seeded", String(Date.now()));
       return SEED_DATA;
     }
     return { contacts: [] };
   }
 
   // Merge seed contacts into existing data: update existing seed contacts, add new ones
+  // IMPORTANT: Only update seed contacts (those that exist in SEED_DATA).
+  // User-added contacts are never touched. For seed contacts, preserve ALL user edits
+  // (research brief, questions, etc.) and only add missing fields from the new seed.
   function mergeSeedData(existing, seed) {
     seed.contacts.forEach(function(seedContact) {
       var idx = existing.contacts.findIndex(function(c) { return c.id === seedContact.id; });
       if (idx >= 0) {
-        // Preserve user-added talk records and followup completion state
-        var userTalks = existing.contacts[idx].talkRecords || [];
-        var userFollowups = existing.contacts[idx].followups || [];
+        var existingContact = existing.contacts[idx];
+        var userTalks = existingContact.talkRecords || [];
+        var userFollowups = existingContact.followups || [];
+        var userQuestions = existingContact.questions || [];
+        var userResearch = existingContact.research || null;
+        var userCustomPhoto = existingContact.customPhoto || null;
+        var userCustomCoffeeImage = existingContact.customCoffeeImage || null;
+        var userCustomCoffeeName = existingContact.customCoffeeName || null;
+        var userCoffeeType = existingContact.coffeeType || null;
+        var userStatus = existingContact.status || null;
+        var userTags = existingContact.tags || [];
+        var userLastTalkDate = existingContact.lastTalkDate || null;
+        var userEmail = existingContact.email || null;
+        var userDepartment = existingContact.department || null;
+        var userRelationship = existingContact.relationship || null;
+        var userPhotoUrl = existingContact.photoUrl || null;
+
+        // Start with updated seed contact as base
         existing.contacts[idx] = seedContact;
-        // Merge: seed provides base, user data overrides talk records and followup done state
-        if (userTalks.length > 0) {
-          existing.contacts[idx].talkRecords = userTalks;
-        }
+
+        // Restore ALL user-specific data that the seed doesn't have
+        if (userTalks.length > 0) existing.contacts[idx].talkRecords = userTalks;
+        if (userQuestions.length > 0) existing.contacts[idx].questions = userQuestions;
+        if (userResearch) existing.contacts[idx].research = userResearch;
+        if (userCustomPhoto) existing.contacts[idx].customPhoto = userCustomPhoto;
+        if (userCustomCoffeeImage) existing.contacts[idx].customCoffeeImage = userCustomCoffeeImage;
+        if (userCustomCoffeeName) existing.contacts[idx].customCoffeeName = userCustomCoffeeName;
+        if (userCoffeeType) existing.contacts[idx].coffeeType = userCoffeeType;
+        if (userStatus) existing.contacts[idx].status = userStatus;
+        if (userTags.length > 0) existing.contacts[idx].tags = userTags;
+        if (userLastTalkDate) existing.contacts[idx].lastTalkDate = userLastTalkDate;
+        if (userEmail) existing.contacts[idx].email = userEmail;
+        if (userDepartment) existing.contacts[idx].department = userDepartment;
+        if (userRelationship) existing.contacts[idx].relationship = userRelationship;
+        if (userPhotoUrl) existing.contacts[idx].photoUrl = userPhotoUrl;
+
+        // Merge followups: keep user's done states
         if (userFollowups.length > 0) {
-          // Keep user's followup done states
-          userFollowups.forEach(function(uf) {
-            var seedFu = existing.contacts[idx].followups.find(function(f) { return f.id === uf.id; });
-            if (seedFu) seedFu.done = uf.done;
-          });
+          existing.contacts[idx].followups = userFollowups;
         }
       } else {
+        // New seed contact — add it
         existing.contacts.push(seedContact);
       }
     });
@@ -398,7 +432,54 @@
   }
 
   function saveData(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      return true;
+    } catch (e) {
+      // Quota exceeded — most likely due to large base64 images
+      var quotaMsg = "Storage is full. Your changes could not be saved.\n\n" +
+        "This usually happens when uploading large photos. Try:\n" +
+        "• Export your data as backup (Settings → Export)\n" +
+        "• Remove or replace large custom photos / coffee icons\n" +
+        "• Delete unused contacts";
+      if (e.name === "QuotaExceededError" || e.code === 22) {
+        alert(quotaMsg);
+      } else {
+        alert("Save failed: " + e.message);
+      }
+      console.error("saveData failed:", e);
+      return false;
+    }
+  }
+
+  // Compress an image file to a small JPEG data URL (max dimension, quality)
+  function compressImage(file, maxDim, quality) {
+    maxDim = maxDim || 256;
+    quality = quality || 0.75;
+    return new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var img = new Image();
+        img.onload = function() {
+          var w = img.width, h = img.height;
+          var scale = Math.min(1, maxDim / Math.max(w, h));
+          var cw = Math.round(w * scale), ch = Math.round(h * scale);
+          var canvas = document.createElement("canvas");
+          canvas.width = cw; canvas.height = ch;
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, cw, ch);
+          try {
+            resolve(canvas.toDataURL("image/jpeg", quality));
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = function() { reject(new Error("Could not load image")); };
+        img.src = ev.target.result;
+      };
+      reader.onerror = function() { reject(new Error("Could not read file")); };
+      reader.readAsDataURL(file);
+    });
   }
 
   // --- Helpers ---
@@ -603,6 +684,10 @@
               '<p>Questions, feedback, or found a bug?</p>' +
               '<p><a href="mailto:alycia_zy17@163.com" class="help-email">&#9993; alycia_zy17@163.com</a></p>' +
             '</section>' +
+            '<section class="help-section">' +
+              '<h2>Version</h2>' +
+              '<p style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;">' + APP_BUILD + '</p>' +
+            '</section>' +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -679,20 +764,20 @@
       uploadInput.addEventListener("change", function(e) {
         var file = e.target.files[0];
         if (!file) return;
-        var reader = new FileReader();
-        reader.onload = function(ev) {
+        compressImage(file, 256, 0.75).then(function(dataUrl) {
           var customName = window.prompt("Name this custom coffee:", "My Coffee");
           if (!customName) customName = "Custom";
           // Save to settings for global custom coffee
           var settings = getSettings();
-          settings.customCoffeeImage = ev.target.result;
+          settings.customCoffeeImage = dataUrl;
           settings.customCoffeeName = customName;
           settings.customCoffeeRecipe = null;
           saveSettings(settings);
           // Re-render the entire page to reflect changes
           render();
-        };
-        reader.readAsDataURL(file);
+        }).catch(function(err) {
+          alert("Could not process image: " + err.message);
+        });
       });
     }
 
@@ -817,7 +902,18 @@
   }
 
   function saveSettings(settings) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      return true;
+    } catch (e) {
+      if (e.name === "QuotaExceededError" || e.code === 22) {
+        alert("Storage is full. Could not save settings.\n\nTry exporting your data as backup, then removing large custom photos.");
+      } else {
+        alert("Save failed: " + e.message);
+      }
+      console.error("saveSettings failed:", e);
+      return false;
+    }
   }
 
   // Predefined background color themes
@@ -843,11 +939,41 @@
       '</button>';
     }).join('');
 
+    // Storage usage
+    var dataSize = (localStorage.getItem(STORAGE_KEY) || "").length;
+    var settingsSize = (localStorage.getItem(SETTINGS_KEY) || "").length;
+    var totalKB = Math.round((dataSize + settingsSize) / 1024);
+    var pct = Math.min(100, Math.round(((dataSize + settingsSize) / (5 * 1024 * 1024)) * 100));
+    var barColor = pct > 80 ? "#c0392b" : (pct > 50 ? "#d68910" : "#5F4E3A");
+    var largeCount = state.data.contacts.filter(function(c) {
+      return (c.customPhoto && c.customPhoto.length > 50000) ||
+             (c.customCoffeeImage && c.customCoffeeImage.length > 50000);
+    }).length;
+
     return '<div class="app-layout">' +
       renderSidebar("settings") +
       '<div class="main-content">' +
         '<h1 style="font-size:24px;font-weight:700;margin-bottom:8px;">&#9881; Settings</h1>' +
         '<p style="color:var(--text-secondary);margin-bottom:32px;">Customize your Coffee chat experience.</p>' +
+
+        '<div class="settings-section">' +
+          '<h2>&#128190; Storage Usage</h2>' +
+          '<p>Your data lives in this browser. Browsers cap local storage at ~5 MB — large photos eat it fast.</p>' +
+          '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:12px 0 8px;">' +
+            '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px;"></div>' +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--text-secondary);">' +
+            'Used: <strong>' + totalKB + ' KB</strong> (' + pct + '% of ~5 MB)' +
+          '</div>' +
+          (largeCount > 0
+            ? '<div style="font-size:13px;color:#c0392b;margin-top:8px;">' +
+              '&#9888; ' + largeCount + ' contact(s) have large photos. Use "Compress All Photos" to shrink them.</div>'
+            : '') +
+          '<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">' +
+            '<button class="btn btn-secondary" id="compressPhotosBtn" style="font-size:12px;padding:6px 12px;">&#128444; Compress All Photos</button>' +
+            '<button class="btn btn-secondary" id="exportDataBtn2" style="font-size:12px;padding:6px 12px;">&#8681; Export Backup</button>' +
+          '</div>' +
+        '</div>' +
 
         '<div class="settings-section">' +
           '<h2>Theme Color</h2>' +
@@ -931,6 +1057,77 @@
         alert("All data has been reset.");
       });
     }
+
+    // Compress all photos (shrink base64 images already stored)
+    var compressBtn = document.getElementById("compressPhotosBtn");
+    if (compressBtn) {
+      compressBtn.addEventListener("click", function() {
+        compressBtn.disabled = true;
+        compressBtn.textContent = "Compressing...";
+        compressAllPhotos().then(function(saved) {
+          render();
+          alert(saved
+            ? "Photos compressed. Storage freed up."
+            : "Nothing to compress, or compression failed.");
+        }).catch(function(err) {
+          render();
+          alert("Compression failed: " + err.message);
+        });
+      });
+    }
+
+    // Export from settings
+    var exportBtn2 = document.getElementById("exportDataBtn2");
+    if (exportBtn2) {
+      exportBtn2.addEventListener("click", function() {
+        exportData();
+      });
+    }
+  }
+
+  // Re-compress all stored base64 images to shrink storage footprint
+  function compressAllPhotos() {
+    var jobs = [];
+    state.data.contacts.forEach(function(c) {
+      if (c.customPhoto && c.customPhoto.indexOf("data:image") === 0) {
+        jobs.push(compressDataUrl(c.customPhoto, 320, 0.8).then(function(newUrl) { c.customPhoto = newUrl; }));
+      }
+      if (c.customCoffeeImage && c.customCoffeeImage.indexOf("data:image") === 0) {
+        jobs.push(compressDataUrl(c.customCoffeeImage, 128, 0.75).then(function(newUrl) { c.customCoffeeImage = newUrl; }));
+      }
+    });
+    var settings = getSettings();
+    if (settings.customCoffeeImage && settings.customCoffeeImage.indexOf("data:image") === 0) {
+      jobs.push(compressDataUrl(settings.customCoffeeImage, 256, 0.75).then(function(newUrl) {
+        settings.customCoffeeImage = newUrl;
+        saveSettings(settings);
+      }));
+    }
+    if (jobs.length === 0) return Promise.resolve(false);
+    return Promise.all(jobs).then(function() {
+      return saveData(state.data);
+    });
+  }
+
+  // Compress an existing data URL (base64) to a smaller JPEG
+  function compressDataUrl(dataUrl, maxDim, quality) {
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        var scale = Math.min(1, maxDim / Math.max(w, h));
+        var cw = Math.round(w * scale), ch = Math.round(h * scale);
+        var canvas = document.createElement("canvas");
+        canvas.width = cw; canvas.height = ch;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, cw, ch);
+        var out = canvas.toDataURL("image/jpeg", quality);
+        // Only use the smaller version
+        resolve(out.length < dataUrl.length ? out : dataUrl);
+      };
+      img.onerror = function() { reject(new Error("Could not load image")); };
+      img.src = dataUrl;
+    });
   }
 
   // --- Dashboard ---
@@ -1372,16 +1569,16 @@
       photoUpload.addEventListener("change", function(e) {
         var file = e.target.files[0];
         if (!file) return;
-        var reader = new FileReader();
-        reader.onload = function(ev) {
+        compressImage(file, 320, 0.8).then(function(dataUrl) {
           var c = getContact(state.currentContactId);
           if (c) {
-            c.customPhoto = ev.target.result;
+            c.customPhoto = dataUrl;
             saveData(state.data);
             render();
           }
-        };
-        reader.readAsDataURL(file);
+        }).catch(function(err) {
+          alert("Could not process image: " + err.message);
+        });
       });
     }
 
@@ -1405,20 +1602,20 @@
       coffeeIconUpload.addEventListener("change", function(e) {
         var file = e.target.files[0];
         if (!file) return;
-        var reader = new FileReader();
-        reader.onload = function(ev) {
+        compressImage(file, 128, 0.75).then(function(dataUrl) {
           var c = getContact(state.currentContactId);
           if (c) {
             // Prompt for custom coffee name
             var customName = window.prompt("Name this coffee (e.g. Butter Latte, Hazelnut Mocha):", getCoffeeLabel(c.coffeeType, c.customCoffeeImage, c.customCoffeeName));
-            c.customCoffeeImage = ev.target.result;
+            c.customCoffeeImage = dataUrl;
             c.coffeeType = null;
             c.customCoffeeName = (customName && customName.trim()) ? customName.trim() : "Custom";
             saveData(state.data);
             render();
           }
-        };
-        reader.readAsDataURL(file);
+        }).catch(function(err) {
+          alert("Could not process image: " + err.message);
+        });
       });
     }
 
@@ -2433,7 +2630,14 @@
         }
         if (confirm("Import " + data.contacts.length + " contacts? This will replace your current data.")) {
           state.data = data;
-          saveData(state.data);
+          // Free up space before writing: clear old data first
+          try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+          if (!saveData(state.data)) {
+            alert("Import failed: browser storage is full.\n\n" +
+              "Your original data was cleared but could not be replaced.\n" +
+              "Try closing other tabs/apps, or removing large photos from the imported file.");
+            return;
+          }
           render();
           alert("Import successful!");
         }
